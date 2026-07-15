@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brazil Portflow - Flows</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <main class="app-grid">
+    <section class="map-pane"><div id="map"></div></section>
+    <section class="detail-pane">
+      <div class="page-title">
+        <h1>Flows And Exposure Semantics</h1>
+        <p>This tab separates final export endpoints from logistics hubs and physical corridor legs. That distinction is the central descriptive-phase finding.</p>
+      </div>
+      <div id="selectionCard" class="card selection-card"></div>
+      <div class="card chart-card">
+        <h3>Comex endpoint corridor share</h3>
+        <p class="caption">Monthly export endpoint shares by product. These are endpoint benchmarks, not full corridor-leg exposure.</p>
+        <div id="shareChart" class="chart"></div>
+      </div>
+      <div class="card chart-card">
+        <h3>Trase hub-aware supply chain</h3>
+        <p class="caption">2017-2019 soy flows: state -> logistics hub -> port of export -> exporter group. UNKNOWN or OTHER nodes are retained.</p>
+        <div id="sankeyChart" class="chart tall"></div>
+      </div>
+      <div class="card table-card">
+        <h3>Top endpoint ports in Comex</h3>
+        <p class="caption">Units: kilograms in the current Comex extraction.</p>
+        <div id="flowTable" class="table-wrap"></div>
+        <div class="button-row"><button id="downloadFlows">Download CSV</button></div>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Definitions</div>
+        <p class="caption"><b>port_of_export</b> is the final export endpoint / customs reporting layer. <b>logistics_hub</b> is an inland logistics or transshipment layer. <b>corridor_leg</b> is the physical water or land leg affected by low water or congestion.</p>
+      </div>
+      <div id="coverage" class="coverage"></div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="assets/common.js"></script>
+  <script>
+    (async function() {
+      const { entities, manifest } = await bootstrap("flows.html");
+      const [routes, flows] = await Promise.all([loadJSON("routes.json"), loadJSON("flows.json")]);
+      initMap("map", entities, routes, { center: [-10, -55], zoom: 4, panOnSelect: true });
+      renderSelectionCard("selectionCard");
+      let shareChart, sankeyChart;
+      let tableRows = [];
+      subscribeState(state => {
+        const product = state.product === "soy" ? "soy" : state.product === "all" ? "soy" : "corn";
+        const rows = flows.shares.filter(r => r.product === product);
+        const option = {
+          legend: { top: 0 },
+          xAxis: { type: "category", data: rows.map(r => r.date) },
+          yAxis: { type: "value", name: "share (%)", max: 100 },
+          series: [
+            { name: "North endpoints", type: "line", stack: "share", areaStyle: {}, data: rows.map(r => r.north), itemStyle: { color: corridorColor("north") } },
+            { name: "South endpoints", type: "line", stack: "share", areaStyle: {}, data: rows.map(r => r.south), itemStyle: { color: corridorColor("south") } },
+            { name: "Other endpoints", type: "line", stack: "share", areaStyle: {}, data: rows.map(r => r.other), itemStyle: { color: corridorColor("other") } }
+          ],
+          dataZoom: [{ type: "inside" }, { type: "slider", height: 18 }]
+        };
+        if (!shareChart) shareChart = makeChart("shareChart", option); else shareChart.setOption(option, true);
+        tableRows = flows.top_ports.filter(r => r.product === product).slice(0, 20).map(r => ({ product: r.product, port: r.port, kg: r.kg, note: "endpoint benchmark" }));
+        makeTable("flowTable", [
+          { key: "product", label: "Product" },
+          { key: "port", label: "Port endpoint" },
+          { key: "kg", label: "Kilograms", numeric: true, format: v => fmtNum(v) },
+          { key: "note", label: "Interpretation" }
+        ], tableRows);
+      });
+      const nodes = Array.from(new Set(flows.sankey_links.flatMap(l => [l.source, l.target]))).map(name => ({ name }));
+      const sankeyOption = {
+        tooltip: { trigger: "item", triggerOn: "mousemove" },
+        series: [{
+          type: "sankey",
+          data: nodes,
+          links: flows.sankey_links,
+          nodeWidth: 12,
+          nodeGap: 8,
+          layoutIterations: 32,
+          emphasis: { focus: "adjacency" },
+          lineStyle: { color: "gradient", curveness: 0.45 }
+        }]
+      };
+      sankeyChart = makeChart("sankeyChart", sankeyOption);
+      bindCSVButton("downloadFlows", () => tableRows, "endpoint_flow_table.csv");
+      renderCoverage("coverage", manifest, ["flows.json"]);
+    })().catch(err => { document.body.insertAdjacentHTML("beforeend", `<pre>${escapeHTML(err.stack || err)}</pre>`); throw err; });
+  </script>
+</body>
+</html>

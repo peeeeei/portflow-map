@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brazil Portflow - Prices</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <main class="app-grid">
+    <section class="map-pane"><div id="map"></div></section>
+    <section class="detail-pane">
+      <div class="page-title">
+        <h1>Prices And Freight</h1>
+        <p>Producer prices and freight are shown as descriptive co-movement with low-water windows. This page does not claim causal incidence.</p>
+      </div>
+      <div id="selectionCard" class="card selection-card"></div>
+      <div class="card chart-card">
+        <h3>IMEA producer-price series</h3>
+        <p class="caption">Selected product city prices in Mato Grosso. Units follow the public IMEA series.</p>
+        <div id="priceChart" class="chart"></div>
+      </div>
+      <div class="card chart-card">
+        <h3>Sorriso freight route comparison</h3>
+        <p class="caption">North route and south route freight quotes are the cost-channel picture; quote coverage must be checked before incidence use.</p>
+        <div id="freightChart" class="chart"></div>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Coffee status</div>
+        <p class="caption">Coffee is not removed from the design. Arabica has usable coverage for descriptive comparison; Conillon is sparse and should not be part of the default first regression view.</p>
+      </div>
+      <div class="card table-card">
+        <h3>Episode summary</h3>
+        <p class="caption">Cells marked pending are intentionally not filled from regression outputs until the empirical specification is validated.</p>
+        <div id="episodeTable" class="table-wrap"></div>
+        <div class="button-row"><button id="downloadEpisodes">Download CSV</button></div>
+      </div>
+      <div id="coverage" class="coverage"></div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="assets/common.js"></script>
+  <script>
+    (async function() {
+      const { entities, manifest } = await bootstrap("prices.html");
+      const [routes, prices] = await Promise.all([loadJSON("routes.json"), loadJSON("prices.json")]);
+      initMap("map", entities, routes, { center: [-13.5, -55.7], zoom: 5, panOnSelect: true });
+      renderSelectionCard("selectionCard");
+      let priceChart, freightChart;
+      subscribeState(state => {
+        const product = state.product === "soy" ? "soy" : "corn";
+        const selectedSeries = prices.prices.filter(s => s.product === product);
+        const allDates = Array.from(new Set(selectedSeries.flatMap(s => s.dates))).sort();
+        const option = {
+          legend: { top: 0, type: "scroll" },
+          xAxis: { type: "category", data: allDates },
+          yAxis: { type: "value", name: "price" },
+          series: selectedSeries.map(s => ({
+            name: s.market,
+            type: "line",
+            showSymbol: false,
+            connectNulls: false,
+            data: allDates.map(d => {
+              const i = s.dates.indexOf(d);
+              return i >= 0 ? s.values[i] : null;
+            })
+          })),
+          dataZoom: [{ type: "inside" }, { type: "slider", height: 18 }]
+        };
+        if (!priceChart) priceChart = makeChart("priceChart", option); else priceChart.setOption(option, true);
+      });
+      const freightDates = Array.from(new Set(prices.freight.flatMap(s => s.dates))).sort();
+      const freightOption = {
+        legend: { top: 0 },
+        xAxis: { type: "category", data: freightDates },
+        yAxis: { type: "value", name: "freight quote" },
+        series: prices.freight.map((s, idx) => ({
+          name: s.route,
+          type: "line",
+          showSymbol: false,
+          connectNulls: false,
+          data: freightDates.map(d => {
+            const i = s.dates.indexOf(d);
+            return i >= 0 ? s.values[i] : null;
+          }),
+          lineStyle: { width: 2 },
+          itemStyle: { color: idx === 0 ? corridorColor("tapajos") : corridorColor("south") }
+        })),
+        dataZoom: [{ type: "inside" }, { type: "slider", height: 18 }]
+      };
+      freightChart = makeChart("freightChart", freightOption);
+      makeTable("episodeTable", [
+        { key: "episode", label: "Episode" },
+        { key: "product", label: "Product" },
+        { key: "exposed_market", label: "Exposed market" },
+        { key: "benchmark", label: "Benchmark" },
+        { key: "mean_exposed_basis_change", label: "Mean exposed basis change" },
+        { key: "mean_benchmark_change", label: "Mean benchmark change" },
+        { key: "freight_spread_change", label: "Freight spread change" },
+        { key: "water_condition", label: "Water condition" },
+        { key: "coverage_caveat", label: "Coverage caveat" }
+      ], prices.episodes);
+      bindCSVButton("downloadEpisodes", () => prices.episodes, "price_episode_summary.csv");
+      renderCoverage("coverage", manifest, ["prices.json"]);
+    })().catch(err => { document.body.insertAdjacentHTML("beforeend", `<pre>${escapeHTML(err.stack || err)}</pre>`); throw err; });
+  </script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brazil Portflow - Event</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <main class="app-grid">
+    <section class="map-pane"><div id="map"></div></section>
+    <section class="detail-pane">
+      <div class="page-title">
+        <h1>2023-2024 Event Story</h1>
+        <p>A descriptive sequence for the Amazon low-water episode. The ordering is a narrative scaffold, not a causal proof.</p>
+      </div>
+      <div id="selectionCard" class="card selection-card"></div>
+      <div id="storyScenes"></div>
+      <div class="card chart-card">
+        <h3>Event context: selected station water</h3>
+        <p class="caption">The same corrected water spine is used here; this chart is included so the story does not float away from the map selection.</p>
+        <div id="eventWaterChart" class="chart"></div>
+      </div>
+      <div class="card table-card">
+        <h3>Story scene table</h3>
+        <p class="caption">Units: ordered descriptive scene number. These are narrative links, not estimated causal effects.</p>
+        <div id="storyTable" class="table-wrap"></div>
+      </div>
+      <div class="button-row"><button id="downloadStory">Download CSV</button></div>
+      <div id="coverage" class="coverage"></div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="assets/common.js"></script>
+  <script>
+    function stationForState(state) {
+      const ent = window.PF_ENTITIES_BY_ID[state.entity];
+      return ent && ent.water_station_id ? ent.water_station_id : null;
+    }
+
+    (async function() {
+      const { entities, manifest } = await bootstrap("event.html");
+      const [routes, eventRows, water] = await Promise.all([loadJSON("routes.json"), loadJSON("event.json"), loadJSON("water.json")]);
+      initMap("map", entities, routes, { center: [-7.5, -58.5], zoom: 4, panOnSelect: true });
+      renderSelectionCard("selectionCard");
+      document.getElementById("storyScenes").innerHTML = eventRows.map(s => `
+        <section class="story-scene">
+          <div class="eyebrow">Scene ${s.step}</div>
+          <h2>${escapeHTML(s.title)}</h2>
+          <p>${escapeHTML(s.text)}</p>
+        </section>`).join("");
+      makeTable("storyTable", [
+        { key: "step", label: "Scene number" },
+        { key: "title", label: "Scene" },
+        { key: "text", label: "Descriptive claim" },
+        { key: "chart", label: "Evidence layer" }
+      ], eventRows);
+      let chart;
+      subscribeState(state => {
+        const station = stationForState(state);
+        const rec = station ? water.series[station] : null;
+        if (!rec) {
+          const ent = selectedEntity();
+          const label = ent ? entityLabel(ent) : "Selected entity";
+          const missingText = station
+            ? `${label} is linked to station ${station}, but that station is not present in water.json.`
+            : `${label} has no linked water-level station in this dashboard.`;
+          const emptyOption = {
+            title: { text: "No linked water series", subtext: missingText, left: "center", top: "middle", textStyle: { fontSize: 16 }, subtextStyle: { width: 360, overflow: "break" } },
+            xAxis: { type: "category", data: [] },
+            yAxis: { type: "value", name: "meters" },
+            series: []
+          };
+          if (!chart) chart = makeChart("eventWaterChart", emptyOption); else chart.setOption(emptyOption, true);
+          return;
+        }
+        const rows = rec.dates.map((d, i) => ({ d, v: rec.levels[i] })).filter(r => r.d >= "2022-01" && r.d <= "2025-12");
+        const option = {
+          xAxis: { type: "category", data: rows.map(r => r.d) },
+          yAxis: { type: "value", name: "meters" },
+          series: [{
+            name: rec.label,
+            type: "line",
+            showSymbol: false,
+            connectNulls: false,
+            data: rows.map(r => r.v),
+            markLine: { symbol: "none", data: rec.official_threshold ? [{ name: rec.official_threshold.label, yAxis: rec.official_threshold.value_m }] : [] }
+          }]
+        };
+        if (!chart) chart = makeChart("eventWaterChart", option); else chart.setOption(option, true);
+      });
+      bindCSVButton("downloadStory", () => eventRows, "event_story_scenes.csv");
+      renderCoverage("coverage", manifest, ["event.json", "water.json"]);
+    })().catch(err => { document.body.insertAdjacentHTML("beforeend", `<pre>${escapeHTML(err.stack || err)}</pre>`); throw err; });
+  </script>
+</body>
+</html>

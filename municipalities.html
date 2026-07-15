@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brazil Portflow - Municipalities</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <main class="app-grid">
+    <section class="map-pane"><div id="map"></div></section>
+    <section class="detail-pane">
+      <div class="page-title">
+        <h1>Municipality Product Exposure</h1>
+        <p>Municipality-level production and port/corridor exposure. Bubble size is 2024 production; color is port exposure. Use the product buttons in the header.</p>
+      </div>
+      <div id="selectionCard" class="card selection-card"></div>
+      <div class="metric-strip">
+        <div class="metric"><div id="metricMun" class="value">-</div><div class="label">municipalities shown</div></div>
+        <div class="metric"><div id="metricOutput" class="value">-</div><div class="label">2024 production, tonnes</div></div>
+        <div class="metric"><div id="metricExposure" class="value">-</div><div class="label">weighted exposure</div></div>
+      </div>
+      <div class="card chart-card">
+        <h3>Production versus exposure</h3>
+        <p class="caption">Each dot is one municipality-product observation. Larger producing municipalities with higher exposure are the first places to inspect.</p>
+        <div id="scatterChart" class="chart"></div>
+      </div>
+      <div class="card table-card">
+        <h3>Municipality table</h3>
+        <p class="caption">Units: production in tonnes. Exposure is 0-1. Soy uses Trase endpoint exposure where available; corn uses a distance proxy.</p>
+        <div id="municipalityTable" class="table-wrap"></div>
+        <div class="button-row"><button id="downloadMunicipalities">Download CSV</button></div>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Exposure caveat</div>
+        <p class="caption">This page is intentionally transparent about source differences. Soy exposure is a Trase 2017-2019 endpoint benchmark, not a full corridor-leg shock. Corn currently uses a distance proxy to Miritituba versus Rondonópolis because a corn-specific Trase route layer is not built yet. Coffee is kept in the product picker, but no municipality production layer is loaded in this dashboard version.</p>
+      </div>
+      <div id="coverage" class="coverage"></div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="assets/common.js"></script>
+  <script>
+    function exposureColor(v) {
+      if (v === null || v === undefined || Number.isNaN(Number(v))) return "#999";
+      const x = Math.max(0, Math.min(1, Number(v)));
+      if (x < 0.25) return "#d55e00";
+      if (x < 0.50) return "#e6a04b";
+      if (x < 0.75) return "#5ca3c7";
+      return "#1f77b4";
+    }
+
+    function productRows(rows, product) {
+      if (product === "coffee") return [];
+      const p = product === "soy" ? "soy" : product === "all" ? "all" : "corn";
+      return rows.filter(r => r.product === p);
+    }
+
+    (async function() {
+      const { entities, manifest } = await bootstrap("municipalities.html");
+      const [routes, muniRows] = await Promise.all([loadJSON("routes.json"), loadJSON("municipality_products.json")]);
+      const mapObj = initMap("map", entities, routes, { center: [-13.0, -56.0], zoom: 5, panOnSelect: false });
+      renderSelectionCard("selectionCard");
+      let markers = [];
+      let scatter;
+      let currentRows = [];
+
+      function renderForProduct(state) {
+        markers.forEach(m => mapObj.map.removeLayer(m));
+        markers = [];
+        currentRows = productRows(muniRows, state.product);
+        const total = currentRows.reduce((s, r) => s + (r.production_tonnes_2024 || 0), 0);
+        const weighted = total ? currentRows.reduce((s, r) => s + (r.production_tonnes_2024 || 0) * (r.port_exposure || 0), 0) / total : null;
+        document.getElementById("metricMun").textContent = fmtNum(currentRows.length);
+        document.getElementById("metricOutput").textContent = fmtNum(total);
+        document.getElementById("metricExposure").textContent = weighted === null ? "no data" : weighted.toFixed(2);
+
+        currentRows.forEach(r => {
+          const radius = Math.max(4, Math.min(18, 3 + Math.sqrt(r.production_tonnes_2024 || 0) / 520));
+          const marker = L.circleMarker([r.lat, r.lon], {
+            radius,
+            color: "#333",
+            weight: 0.7,
+            fillColor: exposureColor(r.port_exposure),
+            fillOpacity: 0.72
+          }).addTo(mapObj.map);
+          marker.bindTooltip(`<b>${escapeHTML(r.municipality)}</b><br>${escapeHTML(r.product)}: ${fmtNum(r.production_tonnes_2024)} t<br>Exposure: ${r.port_exposure == null ? "no data" : Number(r.port_exposure).toFixed(2)}<br>${escapeHTML(r.exposure_source)}`);
+          marker.on("click", () => setState({ entity: "sorriso", corridor: r.port_exposure >= 0.5 ? "tapajos" : "south" }));
+          markers.push(marker);
+        });
+
+        const topRows = currentRows.slice().sort((a, b) => b.production_tonnes_2024 - a.production_tonnes_2024).slice(0, 40);
+        const option = {
+          xAxis: { type: "value", name: "port exposure", min: 0, max: 1 },
+          yAxis: { type: "value", name: "production tonnes" },
+          tooltip: {
+            formatter: p => `${escapeHTML(p.data[3])}<br>Exposure: ${p.data[0].toFixed(2)}<br>Production: ${fmtNum(p.data[1])} t<br>${escapeHTML(p.data[4])}`
+          },
+          series: [{
+            type: "scatter",
+            symbolSize: d => Math.max(6, Math.min(28, 5 + Math.sqrt(d[1]) / 480)),
+            data: topRows.map(r => [Number(r.port_exposure || 0), r.production_tonnes_2024, r.municipality_code, r.municipality, r.exposure_source]),
+            itemStyle: { color: p => exposureColor(p.data[0]), opacity: 0.82 }
+          }]
+        };
+        if (!scatter) scatter = makeChart("scatterChart", option); else scatter.setOption(option, true);
+
+        const tableRows = currentRows.slice().sort((a, b) => b.production_tonnes_2024 - a.production_tonnes_2024).slice(0, 80);
+        makeTable("municipalityTable", [
+          { key: "municipality", label: "Municipality" },
+          { key: "product", label: "Product" },
+          { key: "production_tonnes_2024", label: "2024 production (t)", numeric: true, format: v => fmtNum(v) },
+          { key: "port_exposure", label: "Port exposure (0-1)", numeric: true, format: v => v == null ? "no data" : Number(v).toFixed(2) },
+          { key: "trase_soy_top_port", label: "Trase soy top port" },
+          { key: "distance_diff_km", label: "Miritituba vs Rondonopolis distance diff (km)", numeric: true, format: v => v == null ? "no data" : fmtNum(v, 1) },
+          { key: "exposure_source", label: "Exposure source" }
+        ], tableRows);
+      }
+
+      subscribeState(renderForProduct);
+      bindCSVButton("downloadMunicipalities", () => currentRows, "municipality_product_exposure.csv");
+      renderCoverage("coverage", manifest, ["municipality_products.json"]);
+    })().catch(err => {
+      document.body.insertAdjacentHTML("beforeend", `<pre>${escapeHTML(err.stack || err)}</pre>`);
+      throw err;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brazil Portflow - Water</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <main class="app-grid">
+    <section class="map-pane"><div id="map"></div></section>
+    <section class="detail-pane">
+      <div class="page-title">
+        <h1>Water And Thresholds</h1>
+        <p>Water levels are read from the corrected ANA/Porto de Manaus monthly spine. Official lines are shown only where the legal meaning is documented.</p>
+      </div>
+      <div id="selectionCard" class="card selection-card"></div>
+      <div class="card chart-card">
+        <h3>Selected station water level</h3>
+        <p class="caption">The chart shows monthly mean level, P10/P02 empirical low-water bands, and official markers where valid.</p>
+        <div id="waterChart" class="chart tall"></div>
+      </div>
+      <div class="card chart-card">
+        <h3>Months below low-water bands by year</h3>
+        <p class="caption">This is an exposure count, not a causal disruption estimate. Monthly counts are used because the dashboard spine is monthly.</p>
+        <div id="annualChart" class="chart"></div>
+      </div>
+      <div class="card table-card">
+        <h3>Station-year exposure table</h3>
+        <p class="caption">Units: number of months in the station-year below each marker.</p>
+        <div id="waterTable" class="table-wrap"></div>
+        <div class="button-row"><button id="downloadWater">Download CSV</button></div>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Interpretation caveats</div>
+        <p class="caption">Manaus 17.7 m is an operational surcharge trigger, not a universal navigation-stop threshold. Porto Velho 4.0 m is a navigation-regulation reference, but the station-datum interpretation must be displayed before using it as a station event cutoff. Barcarena is not assigned zero shock merely because it lacks a local usable gauge.</p>
+      </div>
+      <div id="coverage" class="coverage"></div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="assets/common.js"></script>
+  <script>
+    function stationForState(state) {
+      const ent = window.PF_ENTITIES_BY_ID[state.entity];
+      return ent && ent.water_station_id ? ent.water_station_id : null;
+    }
+
+    (async function() {
+      const { entities, manifest } = await bootstrap("water.html");
+      const [routes, water] = await Promise.all([loadJSON("routes.json"), loadJSON("water.json")]);
+      initMap("map", entities, routes, { center: [-7.5, -58.5], zoom: 4, panOnSelect: true });
+      renderSelectionCard("selectionCard");
+      let tableRows = [];
+      let waterChart, annualChart;
+
+      subscribeState(state => {
+        const station = stationForState(state);
+        const rec = station ? water.series[station] : null;
+        if (!rec) {
+          const ent = selectedEntity();
+          const label = ent ? entityLabel(ent) : "Selected entity";
+          const missingText = station
+            ? `${label} is linked to station ${station}, but that station is not present in water.json.`
+            : `${label} has no linked water-level station in this dashboard.`;
+          const emptyOption = {
+            title: { text: "No linked water series", subtext: missingText, left: "center", top: "middle", textStyle: { fontSize: 16 }, subtextStyle: { width: 360, overflow: "break" } },
+            xAxis: { type: "category", data: [] },
+            yAxis: { type: "value", name: "meters" },
+            series: []
+          };
+          if (!waterChart) waterChart = makeChart("waterChart", emptyOption); else waterChart.setOption(emptyOption, true);
+          const annualEmpty = {
+            title: { text: "No exposure counts", subtext: "No station-year exposure is calculated without a linked station.", left: "center", top: "middle", textStyle: { fontSize: 16 }, subtextStyle: { width: 360, overflow: "break" } },
+            xAxis: { type: "category", data: [] },
+            yAxis: { type: "value", name: "months" },
+            series: []
+          };
+          if (!annualChart) annualChart = makeChart("annualChart", annualEmpty); else annualChart.setOption(annualEmpty, true);
+          tableRows = [{
+            station: station || "no linked station",
+            year: "",
+            p10: "",
+            p02: "",
+            official: "",
+            caveat: missingText
+          }];
+          makeTable("waterTable", [
+            { key: "station", label: "Station" },
+            { key: "year", label: "Year" },
+            { key: "p10", label: "Months below P10", numeric: true },
+            { key: "p02", label: "Months below P02", numeric: true },
+            { key: "official", label: "Months below official/reference", numeric: true },
+            { key: "caveat", label: "Threshold caveat" }
+          ], tableRows);
+          return;
+        }
+        const dates = rec.dates;
+        const levels = rec.levels;
+        const marks = [
+          { name: "P10", yAxis: rec.p10, lineStyle: { color: "#f4a261" } },
+          { name: "P02", yAxis: rec.p02, lineStyle: { color: "#c62828" } }
+        ];
+        if (rec.official_threshold) marks.push({ name: rec.official_threshold.label, yAxis: rec.official_threshold.value_m, lineStyle: { color: "#8e0000", type: "dashed" } });
+        const option = {
+          xAxis: { type: "category", data: dates },
+          yAxis: { type: "value", name: "meters" },
+          series: [{
+            name: rec.label,
+            type: "line",
+            data: levels,
+            showSymbol: false,
+            connectNulls: false,
+            lineStyle: { color: corridorColor((selectedEntity() || {}).corridor) },
+            markLine: { symbol: "none", data: marks }
+          }],
+          dataZoom: [{ type: "inside" }, { type: "slider", height: 18 }]
+        };
+        if (!waterChart) waterChart = makeChart("waterChart", option); else waterChart.setOption(option, true);
+
+        const annual = rec.annual_months_below.filter(r => r.year >= 2014);
+        const annualOption = {
+          legend: { top: 0 },
+          xAxis: { type: "category", data: annual.map(r => r.year) },
+          yAxis: { type: "value", name: "months" },
+          series: [
+            { name: "below P10", type: "bar", data: annual.map(r => r.p10), itemStyle: { color: "#f4a261" } },
+            { name: "below P02", type: "bar", data: annual.map(r => r.p02), itemStyle: { color: "#c62828" } },
+            { name: "below official", type: "bar", data: annual.map(r => r.official), itemStyle: { color: "#6a0000" } }
+          ]
+        };
+        if (!annualChart) annualChart = makeChart("annualChart", annualOption); else annualChart.setOption(annualOption, true);
+
+        tableRows = annual.map(r => ({
+          station: `${rec.label} (${rec.station})`,
+          year: r.year,
+          p10: r.p10,
+          p02: r.p02,
+          official: r.official,
+          caveat: rec.official_threshold ? rec.official_threshold.label : "empirical thresholds only"
+        }));
+        makeTable("waterTable", [
+          { key: "station", label: "Station" },
+          { key: "year", label: "Year" },
+          { key: "p10", label: "Months below P10", numeric: true },
+          { key: "p02", label: "Months below P02", numeric: true },
+          { key: "official", label: "Months below official/reference", numeric: true },
+          { key: "caveat", label: "Threshold caveat" }
+        ], tableRows);
+      });
+      bindCSVButton("downloadWater", () => tableRows, "water_exposure_table.csv");
+      renderCoverage("coverage", manifest, ["water.json"]);
+    })().catch(err => { document.body.insertAdjacentHTML("beforeend", `<pre>${escapeHTML(err.stack || err)}</pre>`); throw err; });
+  </script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+{
+  "built_at": "2026-07-14T03:54:49+00:00",
+  "public_data_only": true,
+  "files": {
+    "entities.json": {
+      "file": "entities.json",
+      "rows": 26,
+      "columns": [
+        "caveats",
+        "corridor",
+        "datasets",
+        "description_en",
+        "entity_type",
+        "has_flow",
+        "has_price_link",
+        "has_water",
+        "id",
+        "label_en",
+        "lat",
+        "lon",
+        "name_pt",
+        "role",
+        "water_station_id",
+        "water_status"
+      ],
+      "source_files": [],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:48+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Hand-authored dashboard entity backbone.",
+      "definition_id": "v3",
+      "bytes": 11579
+    },
+    "ports.json": {
+      "file": "ports.json",
+      "rows": 20,
+      "columns": [
+        "caveats",
+        "corridor",
+        "datasets",
+        "description_en",
+        "entity_type",
+        "has_flow",
+        "has_price_link",
+        "has_water",
+        "id",
+        "label_en",
+        "lat",
+        "lon",
+        "name_pt",
+        "role",
+        "water_station_id",
+        "water_status"
+      ],
+      "source_files": [],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:48+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Compatibility port/hub layer.",
+      "definition_id": "v3",
+      "bytes": 8852
+    },
+    "routes.json": {
+      "file": "routes.json",
+      "rows": 7,
+      "columns": [
+        "coords",
+        "corridor",
+        "description",
+        "distance_km",
+        "id",
+        "leg_type",
+        "name"
+      ],
+      "source_files": [],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:48+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Hand-authored route ribbons for orientation.",
+      "definition_id": "v3",
+      "bytes": 1851
+    },
+    "production.json": {
+      "file": "production.json",
+      "rows": 90,
+      "columns": [
+        "corn_t",
+        "lat",
+        "lon",
+        "municipality",
+        "municipality_code",
+        "soy_t",
+        "state",
+        "total_t"
+      ],
+      "source_files": [
+        "data/interim/ibge_pam/ibge_pam_mt_soy_corn_municipality_year_long_2004_2024.csv",
+        "data/interim/crosswalks/ibge_municipality_centroids_min_2026-07-13.csv"
+      ],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:48+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Mato Grosso 2024 soy+corn production centroids; polygon layer deferred.",
+      "definition_id": "v3",
+      "bytes": 15430
+    },
+    "municipality_products.json": {
+      "file": "municipality_products.json",
+      "rows": 411,
+      "columns": [
+        "distance_diff_km",
+        "distance_exposure",
+        "exposure_source",
+        "lat",
+        "lon",
+        "municipality",
+        "municipality_code",
+        "n_known_ports",
+        "port_exposure",
+        "product",
+        "production_tonnes_2024",
+        "state",
+        "trase_known_export_volume_2017_2019",
+        "trase_soy_arco_norte_share",
+        "trase_soy_south_share",
+        "trase_soy_top_port"
+      ],
+      "source_files": [
+        "data/interim/ibge_pam/ibge_pam_mt_soy_corn_municipality_year_long_2004_2024.csv",
+        "data/interim/crosswalks/ibge_municipality_centroids_min_2026-07-13.csv",
+        "data/interim/crosswalks/distance_exposure_all_ibge_municipalities.csv",
+        "data/interim/trase/trase_soy_municipality_exposure_2017_2019.csv"
+      ],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:48+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Municipality-level product production and port/corridor exposure. Soy exposure is Trase endpoint benchmark; corn exposure is a distance proxy.",
+      "definition_id": "v3",
+      "bytes": 196199
+    },
+    "water.json": {
+      "file": "water.json",
+      "rows": 845,
+      "columns": [],
+      "source_files": [
+        "data/interim/ana/wl_monthly.csv"
+      ],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:48+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Monthly water spine from corrected ANA/Porto de Manaus inputs.",
+      "definition_id": "v3",
+      "bytes": 18463
+    },
+    "flows.json": {
+      "file": "flows.json",
+      "rows": 2280,
+      "columns": [],
+      "source_files": [
+        "data/raw/ComexStat_API/comexstat_grains_port_monthly_2017_2026.csv",
+        "data/interim/trase/trase_soy_annual_municipality_port_exporter_2004_2022.csv"
+      ],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:49+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Comex endpoint shares plus Trase hub-aware Sankey. URF/customs caveat still applies.",
+      "definition_id": "v3",
+      "bytes": 45572
+    },
+    "prices.json": {
+      "file": "prices.json",
+      "rows": 14,
+      "columns": [],
+      "source_files": [
+        "data/interim/imea/imea_soy_corn_spot_prices_public.csv",
+        "data/raw/IMEA/imea_historical_frete_graos_freight_2014-07-11_2026-07-11.json"
+      ],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:49+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "IMEA public prices and freight; descriptive only.",
+      "definition_id": "v3",
+      "bytes": 7765
+    },
+    "event.json": {
+      "file": "event.json",
+      "rows": 5,
+      "columns": [
+        "chart",
+        "step",
+        "text",
+        "title"
+      ],
+      "source_files": [],
+      "build_script": "output/portflow_map/build/build_all.py",
+      "built_at": "2026-07-14T03:54:49+00:00",
+      "date_start": null,
+      "date_end": null,
+      "gaps": [],
+      "caveats": "Narrative scaffold linked to factbook F03.",
+      "definition_id": "v3",
+      "bytes": 921
+    }
+  }
+}
