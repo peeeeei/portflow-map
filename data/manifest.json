@@ -1,10 +1,10 @@
 {
-  "built_at": "2026-07-14T03:54:49+00:00",
+  "built_at": "2026-07-16T17:22:39+00:00",
   "public_data_only": true,
   "files": {
     "entities.json": {
       "file": "entities.json",
-      "rows": 26,
+      "rows": 30,
       "columns": [
         "caveats",
         "corridor",
@@ -25,13 +25,13 @@
       ],
       "source_files": [],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:48+00:00",
+      "built_at": "2026-07-16T17:22:37+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
       "caveats": "Hand-authored dashboard entity backbone.",
       "definition_id": "v3",
-      "bytes": 11579
+      "bytes": 13369
     },
     "ports.json": {
       "file": "ports.json",
@@ -56,7 +56,7 @@
       ],
       "source_files": [],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:48+00:00",
+      "built_at": "2026-07-16T17:22:37+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -66,25 +66,36 @@
     },
     "routes.json": {
       "file": "routes.json",
-      "rows": 7,
+      "rows": 11,
       "columns": [
         "coords",
         "corridor",
         "description",
-        "distance_km",
+        "destination",
+        "distance_miles",
+        "distance_nautical_miles",
         "id",
         "leg_type",
-        "name"
+        "modes",
+        "name",
+        "origin",
+        "route_status",
+        "segments",
+        "share_percent",
+        "source_note",
+        "usda_route_numbers"
       ],
-      "source_files": [],
+      "source_files": [
+        "docs/source_ingests/usda_brazil_soybean_transportation_guide_2024_ingest.md"
+      ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:48+00:00",
+      "built_at": "2026-07-16T17:22:37+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
-      "caveats": "Hand-authored route ribbons for orientation.",
+      "caveats": "Route schematic: producer-to-export-port chains are closed to export nodes where a downstream leg is shown. This is not a GIS polyline layer.",
       "definition_id": "v3",
-      "bytes": 1851
+      "bytes": 8567
     },
     "production.json": {
       "file": "production.json",
@@ -104,7 +115,7 @@
         "data/interim/crosswalks/ibge_municipality_centroids_min_2026-07-13.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:48+00:00",
+      "built_at": "2026-07-16T17:22:37+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -140,7 +151,7 @@
         "data/interim/trase/trase_soy_municipality_exposure_2017_2019.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:48+00:00",
+      "built_at": "2026-07-16T17:22:38+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -156,7 +167,7 @@
         "data/interim/ana/wl_monthly.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:48+00:00",
+      "built_at": "2026-07-16T17:22:38+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -173,7 +184,7 @@
         "data/interim/trase/trase_soy_annual_municipality_port_exporter_2004_2022.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:49+00:00",
+      "built_at": "2026-07-16T17:22:38+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -190,7 +201,7 @@
         "data/raw/IMEA/imea_historical_frete_graos_freight_2014-07-11_2026-07-11.json"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:49+00:00",
+      "built_at": "2026-07-16T17:22:39+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -209,7 +220,7 @@
       ],
       "source_files": [],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-14T03:54:49+00:00",
+      "built_at": "2026-07-16T17:22:39+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],

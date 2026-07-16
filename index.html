@@ -16,18 +16,23 @@
     <section class="detail-pane">
       <div class="page-title">
         <h1>System Map</h1>
-        <p>Production areas, inland hubs, water legs, and export endpoints are shown together. Click any marker or route to keep the same selection across all tabs.</p>
+        <p>Soybean export routes are shown as producer-to-export-port chains. Inland hubs remain visible as transshipment nodes, and route lines continue to final export ports where a downstream leg is identified.</p>
       </div>
       <div id="selectionCard" class="card selection-card"></div>
       <div class="metric-strip">
         <div class="metric"><div id="metricEntities" class="value">-</div><div class="label">mapped entities</div></div>
-        <div class="metric"><div id="metricRoutes" class="value">-</div><div class="label">route ribbons</div></div>
+        <div class="metric"><div id="metricRoutes" class="value">-</div><div class="label">route lines</div></div>
         <div class="metric"><div id="metricProduction" class="value">-</div><div class="label">top MT soy+corn output, tonnes</div></div>
       </div>
       <div class="card">
         <div class="eyebrow">Selected corridor sequence</div>
         <h2 id="corridorTitle">How this corridor works</h2>
         <p id="corridorText" class="caption"></p>
+      </div>
+      <div class="card table-card">
+        <h3>Export route schematic</h3>
+        <p class="caption">Dashed route segments are land/rail/truck movement; solid route segments are barge/waterway movement. Distance and share fields are shown only where the route evidence provides them.</p>
+        <div id="routeTable" class="table-wrap"></div>
       </div>
       <div class="card chart-card">
         <h3>Top producing municipalities</h3>
@@ -48,12 +53,12 @@
   <script src="assets/common.js"></script>
   <script>
     const corridorText = {
-      tapajos: "Mato Grosso farm -> BR-163 truck -> Miritituba/Itaituba transshipment -> Tapajos barge -> Santarem or Barcarena -> ocean.",
-      madeira: "Western Mato Grosso/Rondonia -> BR-364 truck -> Porto Velho transshipment -> Madeira barge -> Itacoatiara/Manaus -> ocean.",
-      amazon: "Amazon mainstem and Manaus import/export logistics are linked to Rio Negro/Amazon water conditions, with a documented Manaus surcharge trigger.",
-      south: "Mato Grosso/Parana production -> road or rail, including Rondonopolis -> Santos or Paranagua -> ocean benchmark.",
+      tapajos: "Sorriso routes reach Santarem directly by truck or move by truck to Itaituba/Miritituba and then by barge to Santarem or Barcarena. Itaituba/Miritituba is a transshipment hub, not a final export port.",
+      madeira: "North MT/Sorriso reaches Porto Velho by truck, then continues by Madeira/Amazon waterway to Manaus. Distance and share cover the truck leg to Porto Velho, not the downstream waterway leg.",
+      amazon: "Manaus is the downstream export-port node for the Madeira route and also appears in the Mato Grosso export-port universe.",
+      south: "Center-West and southern production routes continue to Santos, Paranagua, Sao Francisco do Sul, Rio Grande, and Vitoria through road/rail corridors. Distance and share fields are not shown for these schematic land routes.",
       paraguay: "Corumba/Ladario and Porto Murtinho operate on the Paraguay-Parana system, a separate hydrologic corridor.",
-      north: "Arco Norte endpoint layer; physical exposure must be assigned through the relevant upstream corridor leg or hub."
+      north: "Paragominas reaches Barcarena by truck. Barcarena/Belem and Sao Luis/Itaqui also appear as endpoint ports, but endpoint status is not the same as a local water-level shock."
     };
 
     (async function() {
@@ -76,6 +81,34 @@
       document.getElementById("metricEntities").textContent = entities.length;
       document.getElementById("metricRoutes").textContent = routes.length;
       document.getElementById("metricProduction").textContent = fmtNum(production.reduce((s, r) => s + r.total_t, 0));
+
+      const routeRows = routes.map(r => ({
+        id: r.id,
+        status: r.route_status === "complete_producer_to_export_port" ? "complete" : "schematic",
+        route: r.name,
+        origin: r.origin,
+        destination: r.destination,
+        modes: r.modes,
+        distance: r.distance_nautical_miles ? `${fmtNum(r.distance_miles)} mi + ${fmtNum(r.distance_nautical_miles)} nm` : r.distance_miles ? `${fmtNum(r.distance_miles)} mi` : "not shown",
+        share: r.share_percent == null ? "not shown" : `${r.share_percent}%`,
+        note: r.source_note
+      }));
+      makeTable("routeTable", [
+        { key: "status", label: "Status" },
+        { key: "route", label: "Route" },
+        { key: "origin", label: "Origin" },
+        { key: "destination", label: "Export node" },
+        { key: "modes", label: "Mode chain" },
+        { key: "distance", label: "Distance" },
+        { key: "share", label: "Share" },
+        { key: "note", label: "Caveat" }
+      ], routeRows, "id");
+      document.querySelectorAll("#routeTable tbody tr").forEach(tr => {
+        tr.addEventListener("click", () => {
+          const r = routes.find(row => row.id === tr.dataset.rowId);
+          if (r) setState({ corridor: r.corridor });
+        });
+      });
 
       const prodRows = production.slice(0, 12);
       makeChart("productionChart", {
@@ -110,6 +143,10 @@
         document.getElementById("corridorTitle").textContent = `${s.corridor} corridor`;
         document.getElementById("corridorText").textContent = corridorText[s.corridor] || corridorText.north;
         document.querySelectorAll("#entityTable tbody tr").forEach(tr => tr.classList.toggle("selected", tr.dataset.rowId === s.entity));
+        document.querySelectorAll("#routeTable tbody tr").forEach(tr => {
+          const r = routes.find(row => row.id === tr.dataset.rowId);
+          tr.classList.toggle("selected", !!r && r.corridor === s.corridor);
+        });
       });
       bindCSVButton("downloadEntities", () => tableRows, "portflow_entities.csv");
       renderCoverage("coverage", manifest, ["entities.json", "routes.json", "production.json"]);

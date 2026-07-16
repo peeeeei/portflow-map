@@ -169,6 +169,38 @@ button:hover { background: #f4f7f8; }
   line-height: 1.7;
 }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.legend-title {
+  margin: 1px 0 2px;
+  color: #31404a;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.legend-title.mode-title { margin-top: 7px; }
+.legend-line {
+  display: inline-block;
+  width: 24px;
+  height: 0;
+  margin-right: 6px;
+  vertical-align: 3px;
+  border-top: 2px solid #59646e;
+}
+.legend-line.dashed { border-top-style: dashed; }
+.route-arrow-icon {
+  pointer-events: none;
+}
+.route-arrow-icon span {
+  display: block;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 8px solid var(--route-arrow-color);
+  opacity: var(--route-arrow-opacity, .68);
+  transform-origin: 45% 50%;
+  filter: drop-shadow(0 0 1px rgba(255,255,255,.9));
+}
 
 .story-scene {
   background: var(--panel);

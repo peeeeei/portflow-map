@@ -263,11 +263,15 @@ function addLegend(map) {
   legend.onAdd = function() {
     const div = L.DomUtil.create("div", "legend");
     div.innerHTML = `
+      <div class="legend-title">Corridor</div>
       <div><i style="background:${corridorColor("north")}"></i>North / Amazon</div>
       <div><i style="background:${corridorColor("tapajos")}"></i>Tapajos</div>
       <div><i style="background:${corridorColor("madeira")}"></i>Madeira</div>
       <div><i style="background:${corridorColor("south")}"></i>South</div>
-      <div><i style="background:${corridorColor("paraguay")}"></i>Paraguay</div>`;
+      <div><i style="background:${corridorColor("paraguay")}"></i>Paraguay</div>
+      <div class="legend-title mode-title">Mode</div>
+      <div><span class="legend-line dashed"></span>Land / rail / truck</div>
+      <div><span class="legend-line solid"></span>Barge / waterway</div>`;
     return div;
   };
   legend.addTo(map);
@@ -287,6 +291,66 @@ function entityMarker(entity) {
   });
 }
 
+function routeBendSign(route, segmentIndex) {
+  const text = `${route.id || route.name || ""}:${segmentIndex}`;
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
+  return hash % 2 === 0 ? 1 : -1;
+}
+
+function curvedPair(map, start, end, bend, steps) {
+  const p0 = map.project(L.latLng(start[0], start[1]), 5);
+  const p1 = map.project(L.latLng(end[0], end[1]), 5);
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ctrl = L.point(
+    (p0.x + p1.x) / 2 + (-dy / len) * len * bend,
+    (p0.y + p1.y) / 2 + (dx / len) * len * bend
+  );
+  const out = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const x = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * ctrl.x + t * t * p1.x;
+    const y = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * ctrl.y + t * t * p1.y;
+    const ll = map.unproject(L.point(x, y), 5);
+    out.push([ll.lat, ll.lng]);
+  }
+  return out;
+}
+
+function curvedRouteCoords(map, coords, route, segmentIndex) {
+  if (!coords || coords.length < 2) return coords || [];
+  const sign = routeBendSign(route, segmentIndex);
+  const out = [];
+  coords.slice(0, -1).forEach((pt, idx) => {
+    const pair = curvedPair(map, pt, coords[idx + 1], sign * 0.13, 12);
+    out.push(...(idx === 0 ? pair : pair.slice(1)));
+  });
+  return out;
+}
+
+function routeAngle(map, coords) {
+  if (!coords || coords.length < 2) return 0;
+  const a = coords[coords.length - 2];
+  const b = coords[coords.length - 1];
+  const p0 = map.project(L.latLng(a[0], a[1]), 5);
+  const p1 = map.project(L.latLng(b[0], b[1]), 5);
+  return Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180 / Math.PI;
+}
+
+function addRouteArrow(map, layer, coords, color, opacity) {
+  if (!coords || coords.length < 2) return;
+  const angle = routeAngle(map, coords);
+  const icon = L.divIcon({
+    className: "route-arrow-icon",
+    html: `<span style="--route-arrow-color:${escapeHTML(color)}; --route-arrow-opacity:${opacity}; transform: rotate(${angle}deg);"></span>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7]
+  });
+  L.marker(coords[coords.length - 1], { icon, interactive: false }).addTo(layer);
+}
+
 function initMap(id, entities, routes, options = {}) {
   const map = L.map(id, { zoomControl: true, preferCanvas: true }).setView(options.center || [-12.5, -55.5], options.zoom || 4);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -295,14 +359,33 @@ function initMap(id, entities, routes, options = {}) {
   }).addTo(map);
   const routeLayer = L.layerGroup().addTo(map);
   (routes || []).forEach(r => {
-    const line = L.polyline(r.coords, {
-      color: corridorColor(r.corridor),
-      weight: r.leg_type === "barge" ? 5 : 3,
-      opacity: 0.68,
-      dashArray: r.leg_type === "rail" ? "7 5" : r.leg_type === "truck" ? "3 5" : null
-    }).addTo(routeLayer);
-    line.bindTooltip(`<b>${escapeHTML(r.name)}</b><br>${escapeHTML(r.leg_type)} leg, ${fmtNum(r.distance_km)} km<br>${escapeHTML(r.description)}`);
-    line.on("click", () => setState({ corridor: r.corridor }));
+    const isIncomplete = r.route_status === "incomplete_producer_to_inland_node";
+    const statusLabel = r.route_status === "complete_producer_to_export_port"
+      ? "producer-to-export route"
+      : r.route_status === "schematic_producer_to_export_port"
+        ? "producer-to-export route schematic"
+        : "incomplete inland-node leg";
+    const distanceLabel = r.distance_nautical_miles
+      ? `${fmtNum(r.distance_miles)} mi + ${fmtNum(r.distance_nautical_miles)} nm`
+      : r.distance_miles ? `${fmtNum(r.distance_miles)} mi` : r.distance_km ? `${fmtNum(r.distance_km)} km` : "";
+    const segments = r.segments && r.segments.length ? r.segments : [{ mode: "land", label: r.modes || "route", coords: r.coords }];
+    segments.forEach((seg, idx) => {
+      const mode = seg.mode || "land";
+      const lineCoords = curvedRouteCoords(map, seg.coords, r, idx);
+      const color = corridorColor(r.corridor);
+      const opacity = isIncomplete ? 0.44 : 0.68;
+      const line = L.polyline(lineCoords, {
+        color,
+        weight: mode === "water" ? 3 : 2.2,
+        opacity,
+        lineCap: "round",
+        lineJoin: "round",
+        dashArray: mode === "water" ? null : "5 6"
+      }).addTo(routeLayer);
+      addRouteArrow(map, routeLayer, lineCoords, color, opacity);
+      line.bindTooltip(`<b>${escapeHTML(r.name)}</b><br>${statusLabel}<br>${escapeHTML(seg.label || mode)} segment: ${escapeHTML(r.modes || "")}${distanceLabel ? ` / ${distanceLabel}` : ""}<br>${escapeHTML(r.source_note || r.description || "")}`);
+      line.on("click", () => setState({ corridor: r.corridor }));
+    });
   });
   const markers = {};
   entities.forEach(e => {
