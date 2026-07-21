@@ -98,26 +98,52 @@
           ], tableRows);
           return;
         }
-        const dates = rec.dates;
-        const levels = rec.levels;
+        const monthLabels = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        // One-hue ordinal ramp, light->dark (year is an ordered quantity, not a nominal
+        // category) -- same palette used for the water-level chart in data_sources_overview.ipynb.
+        const waterYearColors = { 2020: "#86b6ef", 2021: "#6d9bd3", 2022: "#5481b8", 2023: "#3c679e", 2024: "#254e84", 2025: "#0d366b" };
+        const waterYears = Object.keys(waterYearColors).map(Number);
+        const byMonth = {};
+        rec.dates.forEach((d, i) => { byMonth[d] = { level: rec.levels[i], days_p10: rec.days_below_p10 ? rec.days_below_p10[i] : null }; });
         const marks = [
-          { name: "P10", yAxis: rec.p10, lineStyle: { color: "#f4a261" } },
-          { name: "P02", yAxis: rec.p02, lineStyle: { color: "#c62828" } }
+          { name: "regression P10", yAxis: rec.regression_p10_m ?? rec.p10, lineStyle: { color: "#f4a261" } },
+          { name: "regression P02", yAxis: rec.regression_p02_m ?? rec.p02, lineStyle: { color: "#c62828" } }
         ];
         if (rec.official_threshold) marks.push({ name: rec.official_threshold.label, yAxis: rec.official_threshold.value_m, lineStyle: { color: "#8e0000", type: "dashed" } });
+        const lineSeries = waterYears.map(y => ({
+          name: String(y), type: "line", yAxisIndex: 0,
+          data: monthLabels.map((_, i) => {
+            const ym = `${y}-${String(i + 1).padStart(2, "0")}`;
+            const v = byMonth[ym];
+            return v ? v.level : null;
+          }),
+          showSymbol: true, symbolSize: 5, connectNulls: false,
+          lineStyle: { width: 2.5, color: waterYearColors[y] },
+          itemStyle: { color: waterYearColors[y] },
+          emphasis: { focus: "series", lineStyle: { width: 4 } },
+          markLine: y === waterYears[waterYears.length - 1] ? { symbol: "none", data: marks, silent: true } : undefined
+        }));
+        const barSeries = waterYears.map(y => ({
+          name: String(y), type: "bar", yAxisIndex: 1,
+          data: monthLabels.map((_, i) => {
+            const ym = `${y}-${String(i + 1).padStart(2, "0")}`;
+            const v = byMonth[ym];
+            return v ? v.days_p10 : null;
+          }),
+          itemStyle: { color: waterYearColors[y], opacity: 0.55 },
+          emphasis: { focus: "series" },
+          barGap: "10%"
+        }));
         const option = {
-          xAxis: { type: "category", data: dates },
-          yAxis: { type: "value", name: "meters" },
-          series: [{
-            name: rec.label,
-            type: "line",
-            data: levels,
-            showSymbol: false,
-            connectNulls: false,
-            lineStyle: { color: corridorColor((selectedEntity() || {}).corridor) },
-            markLine: { symbol: "none", data: marks }
-          }],
-          dataZoom: [{ type: "inside" }, { type: "slider", height: 18 }]
+          tooltip: { trigger: "item", formatter: p => `${p.seriesName}, ${p.name}<br>${p.marker}${p.seriesType === "bar" ? "Days below regression P10" : "Level"}: ${p.value == null ? "n/a" : p.value}${p.seriesType === "bar" ? "" : " m"}` },
+          legend: { top: 0, type: "scroll", data: waterYears.map(String), selectedMode: true },
+          grid: { left: 60, right: 60, top: 34, bottom: 42 },
+          xAxis: { type: "category", data: monthLabels },
+          yAxis: [
+            { type: "value", name: "meters" },
+            { type: "value", name: "days below P10", splitLine: { show: false } }
+          ],
+          series: [...barSeries, ...lineSeries]
         };
         if (!waterChart) waterChart = makeChart("waterChart", option); else waterChart.setOption(option, true);
 

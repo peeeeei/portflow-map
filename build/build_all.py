@@ -459,6 +459,23 @@ def build_municipality_products():
 def build_water():
     monthly_path = PROJ / "data/interim/ana/wl_monthly.csv"
     rows = read_csv(monthly_path)
+
+    # Canonical regression shock table (code/analysis/reg_l2_core.py's actual input) -- its P10/P02
+    # are computed on the DAILY level distribution, not the monthly-mean distribution build_water()
+    # used to compute below. The two do NOT agree (verified 2026-07-21: e.g. Porto Velho 2.72m vs
+    # 3.33m, Ladario 0.47m vs 1.21m) -- days_below_p10 here is read directly from the regression's
+    # own table so this chart matches what the regressions actually used, not a re-derived proxy.
+    shock_path = PROJ / "data/interim/shocks/shock_leg_monthly.csv"
+    shock_rows = read_csv(shock_path)
+    days_below = {}
+    regression_thresholds = {}
+    for r in shock_rows:
+        days_below[(r["station"], r["year_month"])] = {
+            "days_below_p10": fnum(r["days_below_p10"], 0),
+            "days_below_p02": fnum(r["days_below_p02"], 0),
+        }
+        regression_thresholds.setdefault(r["station"], {"p10_m": fnum(r["p10_m"]), "p02_m": fnum(r["p02_m"])})
+
     series = defaultdict(list)
     station_values = defaultdict(list)
     for r in rows:
@@ -466,7 +483,12 @@ def build_water():
         if val is None:
             continue
         station = r["station"]
-        series[station].append({"date": r["year_month"], "level_m": val, "min_m": fnum(r["min_level_m"]), "max_m": fnum(r["max_level_m"]), "n_daily_obs": fnum(r["n_daily_obs"], 0), "label": r["label"], "leg": r["leg"], "source": r["source"]})
+        shock_rec = days_below.get((station, r["year_month"]), {})
+        series[station].append({
+            "date": r["year_month"], "level_m": val, "min_m": fnum(r["min_level_m"]), "max_m": fnum(r["max_level_m"]),
+            "n_daily_obs": fnum(r["n_daily_obs"], 0), "label": r["label"], "leg": r["leg"], "source": r["source"],
+            "days_below_p10": shock_rec.get("days_below_p10"), "days_below_p02": shock_rec.get("days_below_p02"),
+        })
         station_values[station].append(val)
     out_series = {}
     thresholds = {
@@ -493,13 +515,57 @@ def build_water():
             "leg": series[station][0]["leg"],
             "dates": [r["date"] for r in series[station]],
             "levels": [r["level_m"] for r in series[station]],
+            "days_below_p10": [r["days_below_p10"] for r in series[station]],
+            "days_below_p02": [r["days_below_p02"] for r in series[station]],
             "p10": round(p10, 2),
             "p02": round(p02, 2),
+            "regression_p10_m": regression_thresholds.get(station, {}).get("p10_m"),
+            "regression_p02_m": regression_thresholds.get(station, {}).get("p02_m"),
             "official_threshold": thresholds.get(station),
             "annual_months_below": [{"year": int(y), **v} for y, v in sorted(annual.items())],
             "coverage": {"start": series[station][0]["date"], "end": series[station][-1]["date"], "n": len(series[station]), "gaps": []},
         }
-    write_json("water.json", {"row_count": sum(len(v["dates"]) for v in out_series.values()), "series": out_series}, [monthly_path], "Monthly water spine from corrected ANA/Porto de Manaus inputs.")
+    write_json(
+        "water.json",
+        {"row_count": sum(len(v["dates"]) for v in out_series.values()), "series": out_series},
+        [monthly_path, shock_path],
+        "Monthly water spine from corrected ANA/Porto de Manaus inputs. days_below_p10/p02 and "
+        "regression_p10_m/p02_m are read directly from the regression pipeline's own shock table "
+        "(code/analysis/reg_l2_core.py's input) -- NOT re-derived here -- because this dashboard's "
+        "own p10/p02 (computed on monthly-MEAN levels) differ from the regression's (computed on "
+        "DAILY levels); verified 2026-07-21 the two disagree by up to ~0.75m at some stations.",
+    )
+
+
+def build_frete_by_corridor():
+    """CONAB Frete (data/raw/CONAB_Frete/Frete.csv) MT-origin routes toward the Amazon
+    corridor, monthly R$/tonne by route and year -- restricted to the 3 deep, near-continuous
+    routes (n>=100 quotes each) identified in runs.md 2026-07-21 / plot_frete_route_map.py;
+    the many 1-12-observation extras don't have enough depth for a by-year line chart. Keyed by
+    this dashboard's own `corridor` taxonomy (routes.json) so clicking a map route can look up
+    matching freight-rate series directly."""
+    frete_path = PROJ / "data/raw/CONAB_Frete/Frete.csv"
+    route_corridor = {
+        ("SORRISO-MT", "ITAITUBA-PA"): ("tapajos", "Sorriso to Itaituba"),
+        ("SORRISO-MT", "SANTARÉM-PA"): ("tapajos", "Sorriso to Santarem"),
+        ("CAMPO NOVO DO PARECIS-MT", "PORTO VELHO-RO"): ("madeira", "Campo Novo do Parecis to Porto Velho"),
+    }
+    by_key = defaultdict(list)
+    with frete_path.open("r", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            pair = (row.get("municipio_origem", ""), row.get("municipio_destino", ""))
+            if pair not in route_corridor:
+                continue
+            try:
+                year, month, rate = int(row["ano"]), int(row["mes"]), float(row["valor_frete_tonelada"])
+            except (KeyError, ValueError):
+                continue
+            by_key[(pair, year, month)].append(rate)
+    records = []
+    for (pair, year, month), vals in sorted(by_key.items()):
+        corridor, route_name = route_corridor[pair]
+        records.append({"corridor": corridor, "route": route_name, "year": year, "month": month, "rate_brl_t": round(sum(vals) / len(vals), 1)})
+    return records, [frete_path]
 
 
 def build_flows():
@@ -550,7 +616,71 @@ def build_flows():
         edge[(f"hub: {hub}", f"export port: {port}")] += vol
         edge[(f"export port: {port}", f"exporter: {exporter}")] += vol
     links = [{"source": s, "target": t, "value": round(v, 1)} for (s, t), v in edge.items() if v > 0]
-    write_json("flows.json", {"row_count": len(share_rows) + len(links), "shares": share_rows, "top_ports": top_ports, "sankey_links": links[:160]}, [comex_path, trase_path], "Comex endpoint shares plus Trase hub-aware Sankey. URF/customs caveat still applies.")
+
+    frete_records, frete_sources = build_frete_by_corridor()
+    write_json(
+        "flows.json",
+        {
+            "row_count": len(share_rows) + len(links) + len(frete_records),
+            "shares": share_rows,
+            "top_ports": top_ports,
+            "sankey_links": links[:160],
+            "frete_by_corridor": frete_records,
+        },
+        [comex_path, trase_path, *frete_sources],
+        "Comex endpoint shares plus Trase hub-aware Sankey; CONAB Frete route-level freight rates for the 3 deep MT-origin routes. URF/customs caveat still applies.",
+    )
+
+
+def build_conab_price_volume():
+    """CONAB national mean farm-gate price vs. ComexStat national export volume, monthly,
+    2020-2025, soy/corn. Replaces the IMEA city-price chart on prices.html with a
+    price-vs-volume view (see runs.md 2026-07-21)."""
+    conab_paths = {
+        "soy": PROJ / "data/raw/CONAB_Precos/CONAB_SerieHistorica_Municipio_SOJA_60kg_2014_2026_long.csv",
+        "corn": PROJ / "data/raw/CONAB_Precos/CONAB_SerieHistorica_Municipio_MILHO_EM_GRAOS_60kg_2014_2026_long.csv",
+    }
+    price_sum = defaultdict(float)
+    price_n = defaultdict(int)
+    for crop, path in conab_paths.items():
+        with path.open("r", encoding="utf-8") as f:
+            for row in csv.DictReader(f, delimiter=";"):
+                try:
+                    year = int(row["ano"])
+                    month = int(row["mes"])
+                    val = float(row["preco_medio_r_por_unidade"]) * (1000.0 / 60.0)
+                except (KeyError, ValueError):
+                    continue
+                if not (2020 <= year <= 2025) or val <= 0:
+                    continue
+                price_sum[(crop, year, month)] += val
+                price_n[(crop, year, month)] += 1
+
+    comex_path = PROJ / "data/raw/ComexStat_API/comexstat_grains_port_monthly_2017_2026.csv"
+    volume_sum = defaultdict(float)
+    with comex_path.open("r", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            label = row.get("ncm_label", "")
+            crop = "soy" if label == "Soja" else "corn" if label == "Milho" else None
+            if crop is None:
+                continue
+            try:
+                year = int(row["year"])
+                month = int(row["month"])
+                kg = float(row["kg"])
+            except (KeyError, ValueError):
+                continue
+            if not (2020 <= year <= 2025):
+                continue
+            volume_sum[(crop, year, month)] += kg / 1000.0
+
+    records = []
+    keys = set(price_sum) | set(volume_sum)
+    for crop, year, month in sorted(keys):
+        price = round(price_sum[(crop, year, month)] / price_n[(crop, year, month)], 2) if price_n.get((crop, year, month)) else None
+        volume = round(volume_sum.get((crop, year, month), 0.0), 1) or None
+        records.append({"product": crop, "year": year, "month": month, "price_brl_t": price, "export_tonnes": volume})
+    return records, [conab_paths["soy"], conab_paths["corn"], comex_path]
 
 
 def build_prices():
@@ -586,7 +716,20 @@ def build_prices():
         {"episode": "2023 low-water window", "product": "corn/soy", "exposed_market": "Sorriso and northern MT", "benchmark": "Southern benchmark pending CONAB merge", "mean_exposed_basis_change": "descriptive pending", "mean_benchmark_change": "descriptive pending", "freight_spread_change": "shown in route chart", "water_condition": "Manaus below 17.7 m in Sep-Nov 2023", "coverage_caveat": "IMEA public city series; causal incidence not claimed"},
         {"episode": "2024 low-water window", "product": "corn/soy", "exposed_market": "Sorriso and northern MT", "benchmark": "Southern benchmark pending CONAB merge", "mean_exposed_basis_change": "descriptive pending", "mean_benchmark_change": "descriptive pending", "freight_spread_change": "shown in route chart", "water_condition": "Manaus low-water exposure repeated in 2024", "coverage_caveat": "Check quote coverage before incidence use"},
     ]
-    write_json("prices.json", {"row_count": len(out_series) + len(freight_out) + len(episodes), "prices": out_series, "freight": freight_out, "episodes": episodes, "coffee_note": "Coffee is conditional: Arabica coverage is usable for descriptive comparison; Conillon is sparse."}, [price_path, freight_path], "IMEA public prices and freight; descriptive only.")
+    conab_price_volume, conab_sources = build_conab_price_volume()
+    write_json(
+        "prices.json",
+        {
+            "row_count": len(out_series) + len(freight_out) + len(episodes) + len(conab_price_volume),
+            "prices": out_series,
+            "conab_price_volume": conab_price_volume,
+            "freight": freight_out,
+            "episodes": episodes,
+            "coffee_note": "Coffee is conditional: Arabica coverage is usable for descriptive comparison; Conillon is sparse.",
+        },
+        [price_path, freight_path, *conab_sources],
+        "IMEA freight and episodes; CONAB national mean price vs. ComexStat export volume for the main chart (2020-2025); descriptive only.",
+    )
 
 
 def build_event():

@@ -23,6 +23,12 @@
         <div id="shareChart" class="chart"></div>
       </div>
       <div class="card chart-card">
+        <h3>CONAB Frete: freight rate by corridor</h3>
+        <p class="caption">Click a route on the map to see its CONAB-quoted freight rate (R$/tonne), monthly, with each year as a separate line. Only the 3 MT-origin routes with deep, near-continuous CONAB survey coverage (2014/2015-2026) have this data; other corridors show a coverage note instead.</p>
+        <div id="freteCorridorNote" class="caption"></div>
+        <div id="freteCorridorCharts"></div>
+      </div>
+      <div class="card chart-card">
         <h3>Trase hub-aware supply chain</h3>
         <p class="caption">2017-2019 soy flows: state -> logistics hub -> port of export -> exporter group. UNKNOWN or OTHER nodes are retained.</p>
         <div id="sankeyChart" class="chart tall"></div>
@@ -51,6 +57,69 @@
       renderSelectionCard("selectionCard");
       let shareChart, sankeyChart;
       let tableRows = [];
+      const freteMonthLabels = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      // One-hue ordinal ramp, light->dark (year is an ordered quantity, not a nominal category) --
+      // same convention as the water-level chart (water.html / data_sources_overview.ipynb).
+      function yearRampColor(idx, total) {
+        const light = [134, 182, 239], dark = [13, 54, 107];
+        const t = total > 1 ? idx / (total - 1) : 0;
+        const c = light.map((v, i) => Math.round(v + (dark[i] - v) * t));
+        return `rgb(${c[0]},${c[1]},${c[2]})`;
+      }
+      const freteCharts = {};
+      subscribeState(state => {
+        const corridor = state.corridor || "tapajos";
+        const rows = (flows.frete_by_corridor || []).filter(r => r.corridor === corridor);
+        const routesInCorridor = Array.from(new Set(rows.map(r => r.route)));
+        const container = document.getElementById("freteCorridorCharts");
+        const note = document.getElementById("freteCorridorNote");
+        Object.keys(freteCharts).forEach(id => { freteCharts[id].dispose(); delete freteCharts[id]; });
+        container.innerHTML = "";
+        if (!routesInCorridor.length) {
+          note.textContent = `No CONAB Frete deep-coverage route for the "${corridor}" corridor -- freight cost is not shown for this selection.`;
+          return;
+        }
+        note.textContent = `Corridor: ${corridor} (${routesInCorridor.length} route${routesInCorridor.length > 1 ? "s" : ""} with deep CONAB coverage)`;
+        routesInCorridor.forEach((routeName, ri) => {
+          const routeRows = rows.filter(r => r.route === routeName);
+          const years = Array.from(new Set(routeRows.map(r => r.year))).sort();
+          const byYear = Object.fromEntries(years.map(y => [y, routeRows.filter(r => r.year === y).sort((a, b) => a.month - b.month)]));
+          const series = years.map((y, idx) => {
+            const color = yearRampColor(idx, years.length);
+            return {
+              name: String(y), type: "line", showSymbol: true, symbolSize: 5, smooth: true, connectNulls: false,
+              lineStyle: { width: 2.5, color },
+              itemStyle: { color },
+              emphasis: { focus: "series", lineStyle: { width: 4 } },
+              data: freteMonthLabels.map((_, i) => {
+                const r = byYear[y].find(rr => rr.month === i + 1);
+                return r ? r.rate_brl_t : null;
+              })
+            };
+          });
+          const wrap = document.createElement("div");
+          wrap.style.marginBottom = "10px";
+          const title = document.createElement("div");
+          title.style.cssText = "font-weight:600;font-size:13px;margin-bottom:2px;";
+          title.textContent = routeName;
+          const chartDiv = document.createElement("div");
+          const chartId = `freteChart_${ri}`;
+          chartDiv.id = chartId;
+          chartDiv.className = "chart";
+          wrap.appendChild(title);
+          wrap.appendChild(chartDiv);
+          container.appendChild(wrap);
+          const option = {
+            tooltip: { trigger: "item", formatter: p => `${p.seriesName}, ${p.name}<br>${p.marker}Freight: ${p.value == null ? "n/a" : p.value} R$/t` },
+            legend: { top: 4, type: "scroll", data: years.map(String) },
+            grid: { left: 60, right: 24, top: 40, bottom: 42 },
+            xAxis: { type: "category", data: freteMonthLabels },
+            yAxis: { type: "value", name: "freight, R$/t" },
+            series
+          };
+          freteCharts[chartId] = makeChart(chartId, option);
+        });
+      });
       subscribeState(state => {
         const product = state.product === "soy" ? "soy" : state.product === "all" ? "soy" : "corn";
         const rows = flows.shares.filter(r => r.product === product);

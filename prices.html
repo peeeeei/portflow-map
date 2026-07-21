@@ -18,8 +18,8 @@
       </div>
       <div id="selectionCard" class="card selection-card"></div>
       <div class="card chart-card">
-        <h3>IMEA producer-price series</h3>
-        <p class="caption">Selected product city prices in Mato Grosso. Units follow the public IMEA series.</p>
+        <h3>CONAB farm-gate price vs. export volume</h3>
+        <p class="caption">Line (left axis): CONAB national mean farm-gate price, R$/tonne, averaged across all reporting municipalities each month. Bars (right axis): total Brazil export volume that month, ComexStat, all ports. Month on the x-axis so seasons line up across years; click a year in the legend to isolate it. Follows the Product toggle above.</p>
         <div id="priceChart" class="chart"></div>
       </div>
       <div class="card chart-card">
@@ -50,25 +50,57 @@
       initMap("map", entities, routes, { center: [-13.5, -55.7], zoom: 5, panOnSelect: true });
       renderSelectionCard("selectionCard");
       let priceChart, freightChart;
+      const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      // Qualitative palette (distinct hues, not a light->dark ramp of one color) so 2020-2025
+      // read as six clearly different years, not an ordered gradient.
+      const YEAR_COLORS = ["#7f3c8d", "#11a579", "#3969ac", "#f2b701", "#e73f74", "#80ba5a"];
+
+      function priceVolumeTooltip(params) {
+        const label = params[0] ? params[0].axisValueLabel || params[0].name : "";
+        const priceRows = params.filter(p => p.seriesType === "line" && p.value != null);
+        const volRows = params.filter(p => p.seriesType === "bar" && p.value != null);
+        const row = (p, decimals) => `<div>${p.marker}${p.seriesName}: ${Number(p.value).toLocaleString(undefined, { maximumFractionDigits: decimals })}</div>`;
+        let html = `<div style="font-weight:600;margin-bottom:4px;">${label}</div>`;
+        if (priceRows.length) {
+          html += `<div style="font-weight:600;font-size:11px;color:#666;margin-top:2px;">Farm-gate price, R$/t</div>${priceRows.map(p => row(p, 0)).join("")}`;
+        }
+        if (volRows.length) {
+          html += `<div style="font-weight:600;font-size:11px;color:#666;margin-top:6px;">Export volume, t</div>${volRows.map(p => row(p, 0)).join("")}`;
+        }
+        return html;
+      }
+
       subscribeState(state => {
         const product = state.product === "soy" ? "soy" : "corn";
-        const selectedSeries = prices.prices.filter(s => s.product === product);
-        const allDates = Array.from(new Set(selectedSeries.flatMap(s => s.dates))).sort();
+        const rows = (prices.conab_price_volume || []).filter(r => r.product === product);
+        const years = Array.from(new Set(rows.map(r => r.year))).sort();
+        const byYear = Object.fromEntries(years.map(y => [y, rows.filter(r => r.year === y).sort((a, b) => a.month - b.month)]));
+        const series = [];
+        years.forEach((y, idx) => {
+          const color = YEAR_COLORS[idx % YEAR_COLORS.length];
+          const rowsByMonth = m => byYear[y].find(r => r.month === m);
+          series.push({
+            name: String(y), type: "bar", yAxisIndex: 1,
+            data: MONTH_LABELS.map((_, i) => (rowsByMonth(i + 1) || {}).export_tonnes ?? null),
+            itemStyle: { color }, barGap: "10%"
+          });
+          series.push({
+            name: String(y), type: "line", yAxisIndex: 0,
+            data: MONTH_LABELS.map((_, i) => (rowsByMonth(i + 1) || {}).price_brl_t ?? null),
+            showSymbol: true, symbolSize: 5, smooth: true, connectNulls: false,
+            lineStyle: { width: 2.5, color }, itemStyle: { color }
+          });
+        });
         const option = {
-          legend: { top: 0, type: "scroll" },
-          xAxis: { type: "category", data: allDates },
-          yAxis: { type: "value", name: "price" },
-          series: selectedSeries.map(s => ({
-            name: s.market,
-            type: "line",
-            showSymbol: false,
-            connectNulls: false,
-            data: allDates.map(d => {
-              const i = s.dates.indexOf(d);
-              return i >= 0 ? s.values[i] : null;
-            })
-          })),
-          dataZoom: [{ type: "inside" }, { type: "slider", height: 18 }]
+          tooltip: { trigger: "axis", formatter: priceVolumeTooltip },
+          legend: { top: 4, type: "scroll", data: years.map(String), selectedMode: true },
+          grid: { left: 60, right: 60, top: 40, bottom: 42 },
+          xAxis: { type: "category", data: MONTH_LABELS },
+          yAxis: [
+            { type: "value", name: "price, R$/t", nameGap: 40 },
+            { type: "value", name: "volume, t", nameGap: 48, splitLine: { show: false } }
+          ],
+          series
         };
         if (!priceChart) priceChart = makeChart("priceChart", option); else priceChart.setOption(option, true);
       });

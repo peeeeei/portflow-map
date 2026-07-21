@@ -1,5 +1,5 @@
 {
-  "built_at": "2026-07-16T17:22:39+00:00",
+  "built_at": "2026-07-21T02:29:39+00:00",
   "public_data_only": true,
   "files": {
     "entities.json": {
@@ -25,7 +25,7 @@
       ],
       "source_files": [],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:37+00:00",
+      "built_at": "2026-07-21T02:29:32+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -56,7 +56,7 @@
       ],
       "source_files": [],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:37+00:00",
+      "built_at": "2026-07-21T02:29:32+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -89,7 +89,7 @@
         "docs/source_ingests/usda_brazil_soybean_transportation_guide_2024_ingest.md"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:37+00:00",
+      "built_at": "2026-07-21T02:29:32+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -115,7 +115,7 @@
         "data/interim/crosswalks/ibge_municipality_centroids_min_2026-07-13.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:37+00:00",
+      "built_at": "2026-07-21T02:29:33+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -151,7 +151,7 @@
         "data/interim/trase/trase_soy_municipality_exposure_2017_2019.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:38+00:00",
+      "built_at": "2026-07-21T02:29:34+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
@@ -161,53 +161,58 @@
     },
     "water.json": {
       "file": "water.json",
-      "rows": 845,
+      "rows": 842,
       "columns": [],
       "source_files": [
-        "data/interim/ana/wl_monthly.csv"
+        "data/interim/ana/wl_monthly.csv",
+        "data/interim/shocks/shock_leg_monthly.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:38+00:00",
+      "built_at": "2026-07-21T02:29:34+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
-      "caveats": "Monthly water spine from corrected ANA/Porto de Manaus inputs.",
+      "caveats": "Monthly water spine from corrected ANA/Porto de Manaus inputs. days_below_p10/p02 and regression_p10_m/p02_m are read directly from the regression pipeline's own shock table (code/analysis/reg_l2_core.py's input) -- NOT re-derived here -- because this dashboard's own p10/p02 (computed on monthly-MEAN levels) differ from the regression's (computed on DAILY levels); verified 2026-07-21 the two disagree by up to ~0.75m at some stations.",
       "definition_id": "v3",
-      "bytes": 18463
+      "bytes": 25934
     },
     "flows.json": {
       "file": "flows.json",
-      "rows": 2280,
+      "rows": 2661,
       "columns": [],
       "source_files": [
         "data/raw/ComexStat_API/comexstat_grains_port_monthly_2017_2026.csv",
-        "data/interim/trase/trase_soy_annual_municipality_port_exporter_2004_2022.csv"
+        "data/interim/trase/trase_soy_annual_municipality_port_exporter_2004_2022.csv",
+        "data/raw/CONAB_Frete/Frete.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:38+00:00",
+      "built_at": "2026-07-21T02:29:37+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
-      "caveats": "Comex endpoint shares plus Trase hub-aware Sankey. URF/customs caveat still applies.",
+      "caveats": "Comex endpoint shares plus Trase hub-aware Sankey; CONAB Frete route-level freight rates for the 3 deep MT-origin routes. URF/customs caveat still applies.",
       "definition_id": "v3",
-      "bytes": 45572
+      "bytes": 83666
     },
     "prices.json": {
       "file": "prices.json",
-      "rows": 14,
+      "rows": 158,
       "columns": [],
       "source_files": [
         "data/interim/imea/imea_soy_corn_spot_prices_public.csv",
-        "data/raw/IMEA/imea_historical_frete_graos_freight_2014-07-11_2026-07-11.json"
+        "data/raw/IMEA/imea_historical_frete_graos_freight_2014-07-11_2026-07-11.json",
+        "data/raw/CONAB_Precos/CONAB_SerieHistorica_Municipio_SOJA_60kg_2014_2026_long.csv",
+        "data/raw/CONAB_Precos/CONAB_SerieHistorica_Municipio_MILHO_EM_GRAOS_60kg_2014_2026_long.csv",
+        "data/raw/ComexStat_API/comexstat_grains_port_monthly_2017_2026.csv"
       ],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:39+00:00",
+      "built_at": "2026-07-21T02:29:39+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
-      "caveats": "IMEA public prices and freight; descriptive only.",
+      "caveats": "IMEA freight and episodes; CONAB national mean price vs. ComexStat export volume for the main chart (2020-2025); descriptive only.",
       "definition_id": "v3",
-      "bytes": 7765
+      "bytes": 20498
     },
     "event.json": {
       "file": "event.json",
@@ -220,7 +225,7 @@
       ],
       "source_files": [],
       "build_script": "output/portflow_map/build/build_all.py",
-      "built_at": "2026-07-16T17:22:39+00:00",
+      "built_at": "2026-07-21T02:29:39+00:00",
       "date_start": null,
       "date_end": null,
       "gaps": [],
